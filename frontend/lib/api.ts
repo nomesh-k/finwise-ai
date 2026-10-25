@@ -45,10 +45,15 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   if (!res.ok) {
     let errorDetail = "An unexpected error occurred.";
     try {
-      const errJson = await res.json();
-      errorDetail = errJson.detail || errJson.message || JSON.stringify(errJson);
+      const text = await res.text();
+      try {
+        const errJson = JSON.parse(text);
+        errorDetail = errJson.detail || errJson.message || JSON.stringify(errJson);
+      } catch {
+        errorDetail = text || `HTTP error ${res.status}`;
+      }
     } catch {
-      errorDetail = await res.text();
+      errorDetail = `HTTP error ${res.status}`;
     }
     throw new Error(errorDetail || `HTTP error ${res.status}`);
   }
