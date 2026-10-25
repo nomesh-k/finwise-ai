@@ -3,9 +3,7 @@
  */
 
 export const API_BASE =
-  typeof window !== "undefined"
-    ? "/api/v1"
-    : process.env.NEXT_PUBLIC_API_URL
+  process.env.NEXT_PUBLIC_API_URL
     ? `${process.env.NEXT_PUBLIC_API_URL}/api/v1`
     : "https://finwise-ai-93mc.onrender.com/api/v1";
 
