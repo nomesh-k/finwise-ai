@@ -3,10 +3,20 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.security import verify_password, get_password_hash, create_access_token
+from app.core.config import settings
+from app.core.security import (
+    verify_password, get_password_hash, create_access_token,
+    create_password_reset_token, verify_password_reset_token
+)
 from app.models.models import User, FinancialProfile, AuditEvent
 from app.schemas.schemas import UserRegister, UserLogin, Token, UserOut, PasswordForgot, PasswordReset
 from app.api.deps import get_current_user
+from app.services.email_service import (
+    send_password_reset_email,
+    send_password_changed_notification,
+    send_login_notification,
+    trigger_n8n_agent_webhook
+)
 
 router = APIRouter()
 
@@ -82,6 +92,12 @@ def login(data: UserLogin, db: Session = Depends(get_db)):
     db.add(audit)
     db.commit()
 
+    # Security: Send sign-in notification to user's registered email
+    try:
+        send_login_notification(user.email, user.display_name)
+    except Exception:
+        pass
+
     return Token(access_token=token, token_type="bearer", user=user_out)
 
 @router.post("/logout")
@@ -103,12 +119,84 @@ def get_me(current_user: User = Depends(get_current_user)):
     return user_out
 
 @router.post("/forgot-password")
-def forgot_password(data: PasswordForgot, db: Session = Depends(get_db)):
+async def forgot_password(data: PasswordForgot, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == data.email.lower()).first()
-    # Always return success message to prevent user enumeration
-    return {"message": "If this email exists in our system, a password recovery link has been generated."}
+    debug_token = None
+    if user and user.is_active:
+        token = create_password_reset_token(user.email)
+        debug_token = token
+        reset_url = f"{settings.FRONTEND_URL}/reset-password?token={token}"
+        send_password_reset_email(user.email, user.display_name, reset_url)
+        
+        audit = AuditEvent(
+            user_id=user.id,
+            action="PASSWORD_RESET_REQUESTED",
+            entity_type="user",
+            entity_id=str(user.id),
+            details=f'{{"email": "{user.email}"}}'
+        )
+        db.add(audit)
+        db.commit()
+
+        # Trigger n8n multi-agent webhook for security auditing if configured
+        await trigger_n8n_agent_webhook("security.password_reset_requested", {
+            "email": user.email,
+            "display_name": user.display_name
+        })
+
+    return {
+        "message": "If this email exists in our system, a secure password recovery link has been sent to your email address.",
+        "debug_token": debug_token
+    }
+
+@router.get("/verify-reset-token")
+def verify_reset_token(token: str):
+    email = verify_password_reset_token(token)
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The password reset link is invalid or has expired."
+        )
+    return {"valid": True, "email": email}
 
 @router.post("/reset-password")
-def reset_password(data: PasswordReset, db: Session = Depends(get_db)):
-    # Simple simulated reset for prototype
+async def reset_password(data: PasswordReset, db: Session = Depends(get_db)):
+    email = verify_password_reset_token(data.token)
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The password reset link is invalid or has expired. Please request a new link."
+        )
+    
+    user = db.query(User).filter(User.email == email.lower()).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User account not found."
+        )
+
+    # Cryptographically secure password hash update
+    user.password_hash = get_password_hash(data.new_password)
+    
+    audit = AuditEvent(
+        user_id=user.id,
+        action="PASSWORD_RESET_COMPLETED",
+        entity_type="user",
+        entity_id=str(user.id)
+    )
+    db.add(audit)
+    db.commit()
+
+    # Deliver confirmation alert to email
+    try:
+        send_password_changed_notification(user.email, user.display_name)
+    except Exception:
+        pass
+
+    # Trigger n8n multi-agent webhook for audit
+    await trigger_n8n_agent_webhook("security.password_reset_completed", {
+        "email": user.email,
+        "display_name": user.display_name
+    })
+
     return {"message": "Password updated successfully. You may now log in with your new credentials."}

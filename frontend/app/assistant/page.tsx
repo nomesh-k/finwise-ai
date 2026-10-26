@@ -16,6 +16,7 @@ import {
   Target,
   Wallet,
   ReceiptText,
+  Mail,
 } from 'lucide-react';
 import { AppLayout } from '@/components/AppLayout';
 import { api } from '@/lib/api';
@@ -129,6 +130,15 @@ function AssistantContent() {
     }
   }
 
+  async function handleEmailReport(text: string) {
+    try {
+      await api.ai.emailReport('FinWise AI Financial Copilot Summary', text);
+      notify('Financial report successfully dispatched to your email!');
+    } catch (err: any) {
+      alert(err.message || 'Failed to dispatch email.');
+    }
+  }
+
   return (
     <AppLayout pageTitle="AI Financial Assistant">
       <div className="max-w-4xl mx-auto space-y-6">
@@ -184,6 +194,17 @@ function AssistantContent() {
                   >
                     {m.content}
                   </div>
+
+                  {m.role === 'assistant' && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleEmailReport(m.content)}
+                        className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#16A36A] hover:text-[#128A58] bg-[#F0FDF4] hover:bg-[#DCFCE7] px-2.5 py-1 rounded-lg border border-[#16A36A]/20 transition-all cursor-pointer shadow-xs"
+                      >
+                        <Mail size={12} /> Email report to my registered inbox
+                      </button>
+                    </div>
+                  )}
 
                   {/* Multi-Agent Steps Trace */}
                   {m.agentSteps && m.agentSteps.length > 0 && (

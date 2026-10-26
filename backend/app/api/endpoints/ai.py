@@ -8,6 +8,7 @@ from app.models.models import User, AgentRun, Recommendation, AuditEvent
 from app.schemas.schemas import ChatRequest, ChatResponse, RecommendationOut, AgentRunOut
 from app.api.deps import get_current_user
 from app.agents.coordinator import CoordinatorAgent
+from app.services.email_service import send_ai_agent_report_email, trigger_n8n_agent_webhook
 
 router = APIRouter()
 
@@ -132,3 +133,28 @@ def reject_recommendation(
     db.commit()
 
     return {"message": "Recommendation rejected.", "id": id, "status": "rejected"}
+
+@router.post("/email-report")
+async def email_ai_report(
+    payload: Dict[str, str],
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Sends the latest multi-agent AI financial summary directly to the user's email."""
+    subject = payload.get("subject", "FinWise AI Financial Plan & Insights")
+    content = payload.get("content", "Here is your multi-agent financial planning summary.")
+    
+    send_ai_agent_report_email(
+        to_email=current_user.email,
+        display_name=current_user.display_name,
+        subject=subject,
+        report_body=content
+    )
+    
+    await trigger_n8n_agent_webhook("ai.report_emailed", {
+        "user_id": current_user.id,
+        "email": current_user.email,
+        "subject": subject
+    })
+    
+    return {"message": f"Financial report successfully sent to {current_user.email}!"}

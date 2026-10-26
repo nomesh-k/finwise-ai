@@ -78,6 +78,18 @@ export const api = {
       request<any>("/auth/logout", {
         method: "POST",
       }),
+    forgotPassword: (data: { email: string }) =>
+      request<{ message: string; debug_token?: string }>("/auth/forgot-password", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    verifyResetToken: (token: string) =>
+      request<{ valid: boolean; email: string }>(`/auth/verify-reset-token?token=${encodeURIComponent(token)}`),
+    resetPassword: (data: { token: string; new_password: string }) =>
+      request<{ message: string }>("/auth/reset-password", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
   },
 
   onboarding: {
@@ -269,6 +281,11 @@ export const api = {
     rejectRecommendation: (id: number) =>
       request<any>(`/ai/recommendations/${id}/reject`, {
         method: "POST",
+      }),
+    emailReport: (subject: string, content: string) =>
+      request<{ message: string }>("/ai/email-report", {
+        method: "POST",
+        body: JSON.stringify({ subject, content }),
       }),
   },
 

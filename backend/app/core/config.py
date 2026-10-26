@@ -21,6 +21,19 @@ class Settings(BaseSettings):
     # AI / LLM Configuration
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", os.getenv("GOOGLE_API_KEY", ""))
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+
+    # Email & SMTP Configuration
+    SMTP_HOST: str = os.getenv("SMTP_HOST", "")
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_USER: str = os.getenv("SMTP_USER", "")
+    SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
+    SMTP_FROM_EMAIL: str = os.getenv("SMTP_FROM_EMAIL", "noreply@finwise.ai")
+    SMTP_FROM_NAME: str = os.getenv("SMTP_FROM_NAME", "FinWise AI Security")
+    SMTP_TLS: bool = os.getenv("SMTP_TLS", "true").lower() in ("1", "true", "yes")
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "https://finwise-ai-demo.vercel.app")
+    
+    # Automation & Multi-Agent Webhooks (e.g. n8n, Zapier)
+    N8N_WEBHOOK_URL: str = os.getenv("N8N_WEBHOOK_URL", "")
     
     # CORS
     CORS_ORIGINS: List[str] = [

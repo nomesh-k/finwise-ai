@@ -2,16 +2,32 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { Activity, Mail, ArrowLeft, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { Activity, Mail, ArrowLeft, ArrowRight, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { api } from '@/lib/api';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [debugToken, setDebugToken] = useState<string | null>(null);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!email.trim()) return;
-    setSubmitted(true);
+    setError('');
+    setLoading(true);
+    try {
+      const res = await api.auth.forgotPassword({ email: email.trim() });
+      if (res.debug_token) {
+        setDebugToken(res.debug_token);
+      }
+      setSubmitted(true);
+    } catch (err: any) {
+      setError(err.message || 'Failed to request password reset. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -31,6 +47,13 @@ export default function ForgotPasswordPage() {
         </div>
 
         <div className="bg-white rounded-2xl border border-[#D9E2DC] shadow-sm p-8 space-y-6">
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl p-3 flex items-center gap-2">
+              <AlertCircle size={16} className="shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
           {submitted ? (
             <div className="text-center space-y-4 py-4">
               <div className="w-12 h-12 rounded-full bg-[#DDF8E8] text-[#16A36A] mx-auto flex items-center justify-center">
@@ -38,11 +61,22 @@ export default function ForgotPasswordPage() {
               </div>
               <h2 className="font-extrabold text-base text-[#10251D]">Recovery email sent</h2>
               <p className="text-xs text-[#64748B] leading-relaxed">
-                If an account exists for <strong>{email}</strong>, a secure password reset link has been dispatched.
+                A secure password reset link has been dispatched to <strong>{email}</strong>. Check your inbox and spam folder.
               </p>
+              {debugToken && (
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-left text-xs space-y-1">
+                  <span className="font-bold text-[#10251D] block">Direct Reset Link:</span>
+                  <Link
+                    href={`/reset-password?token=${debugToken}`}
+                    className="text-[#16A36A] font-semibold break-all underline hover:text-[#128A58]"
+                  >
+                    Click here to set a new password directly
+                  </Link>
+                </div>
+              )}
               <Link
                 href="/login"
-                className="inline-flex items-center gap-1.5 text-xs text-[#16A36A] font-bold hover:underline"
+                className="inline-flex items-center gap-1.5 text-xs text-[#16A36A] font-bold hover:underline pt-2"
               >
                 <ArrowLeft size={14} /> Back to login
               </Link>
@@ -69,9 +103,18 @@ export default function ForgotPasswordPage() {
 
               <button
                 type="submit"
-                className="w-full bg-[#16A36A] hover:bg-[#128A58] text-white py-3 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-2"
+                disabled={loading}
+                className="w-full bg-[#16A36A] hover:bg-[#128A58] disabled:opacity-50 text-white py-3 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-2"
               >
-                Send Recovery Link <ArrowRight size={14} />
+                {loading ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" /> Sending email...
+                  </>
+                ) : (
+                  <>
+                    Send Recovery Link <ArrowRight size={14} />
+                  </>
+                )}
               </button>
 
               <div className="text-center pt-2">
