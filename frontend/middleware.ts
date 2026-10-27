@@ -1,4 +1,5 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
+import { NextResponse } from 'next/server';
 
 const isPublicRoute = createRouteMatcher([
   '/',
@@ -9,13 +10,22 @@ const isPublicRoute = createRouteMatcher([
   '/forgot-password(.*)',
   '/reset-password(.*)',
   '/api/v1(.*)',
+  '/sign-in(.*)',
+  '/sign-up(.*)',
 ]);
 
-export default clerkMiddleware((auth, request) => {
-  if (!isPublicRoute(request)) {
-    auth().protect();
+export default function middleware(request: any, event: any) {
+  // If Clerk Publishable Key is not yet configured, allow pass-through
+  if (!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
+    return NextResponse.next();
   }
-});
+
+  return clerkMiddleware((auth, req) => {
+    if (!isPublicRoute(req)) {
+      auth().protect();
+    }
+  })(request, event);
+}
 
 export const config = {
   matcher: [

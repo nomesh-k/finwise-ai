@@ -8,13 +8,15 @@ export const metadata: Metadata = {
   description: 'AI-Powered personal financial planning, cash flow forecasting, and budgeting.',
 };
 
+const clerkKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || 'pk_test_Y2xlcmsuZXhhbXBsZS5jb20k';
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <ClerkProvider>
+    <ClerkProvider publishableKey={clerkKey}>
       <html lang="en">
         <body>
           <AuthProvider>{children}</AuthProvider>
