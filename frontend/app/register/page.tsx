@@ -140,6 +140,13 @@ export default function RegisterPage() {
               {loading ? 'Creating Account...' : 'Continue to Onboarding'}
               <ArrowRight size={14} />
             </button>
+
+            <Link
+              href="/sign-up"
+              className="w-full bg-[#10251D] hover:bg-[#1A382D] text-white py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-2 no-underline text-center"
+            >
+              Sign Up with Clerk (Google / SSO / Email)
+            </Link>
           </form>
 
           <div className="pt-2 border-t border-gray-100 text-[11px] text-[#64748B] space-y-1">

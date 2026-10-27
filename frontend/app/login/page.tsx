@@ -131,6 +131,15 @@ export default function LoginPage() {
             </button>
           </form>
 
+          {/* Clerk Universal Auth Button */}
+          <Link
+            href="/sign-in"
+            className="w-full bg-[#10251D] hover:bg-[#1A382D] text-white py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-2 no-underline text-center"
+          >
+            <Lock size={14} className="text-[#16A36A]" />
+            Sign In with Clerk (Google / SSO / Email)
+          </Link>
+
           {/* Quick Demo Access Buttons */}
           <div className="pt-2 border-t border-gray-100 space-y-2.5">
             <button
