@@ -1,4 +1,4 @@
-# FinWise AI (पर्सनल फाइनेंशियल प्लानिंग)
+# FinWise AI
 ### Production-Oriented AI-Powered Personal Financial Planning Platform
 
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688.svg?style=flat&logo=fastapi)](https://fastapi.tiangolo.com)
