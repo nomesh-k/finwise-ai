@@ -1,3 +1,4 @@
+import os
 from datetime import date, timedelta
 from decimal import Decimal
 from sqlalchemy.orm import Session
@@ -27,12 +28,15 @@ def seed_demo_data(db: Session) -> User:
     db.add(demo_user)
     db.flush()
 
-    # Create Admin User
-    admin_user = db.query(User).filter(User.email == "admin@finwise.ai").first()
-    if not admin_user:
+    # Create Admin User only when a private password is supplied through the environment.
+    # There is deliberately no built-in default admin password.
+    admin_email = os.getenv("DEFAULT_ADMIN_EMAIL", "admin@finwise.ai").lower()
+    admin_password = os.getenv("DEFAULT_ADMIN_PASSWORD", "")
+    admin_user = db.query(User).filter(User.email == admin_email).first()
+    if not admin_user and admin_password and admin_password != "Admin1234!":
         admin_user = User(
-            email="admin@finwise.ai",
-            password_hash=get_password_hash("Admin1234!"),
+            email=admin_email,
+            password_hash=get_password_hash(admin_password),
             display_name="Security Admin",
             currency="INR",
             role="admin",

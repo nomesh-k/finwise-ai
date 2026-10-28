@@ -4,6 +4,9 @@ from typing import List
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "FinWise AI"
+    # "development" logs one-time codes to the server console when no email provider is set.
+    # Anything else (the default) refuses to continue without a real email provider.
+    APP_ENV: str = os.getenv("APP_ENV", "production")
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api/v1"
     
@@ -31,6 +34,17 @@ class Settings(BaseSettings):
     SMTP_FROM_NAME: str = os.getenv("SMTP_FROM_NAME", "FinWise AI Security")
     SMTP_TLS: bool = os.getenv("SMTP_TLS", "true").lower() in ("1", "true", "yes")
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "https://finwise-ai-demo.vercel.app")
+
+    # HTTPS email APIs (recommended on hosts that block SMTP ports, e.g. Render free tier).
+    BREVO_API_KEY: str = os.getenv("BREVO_API_KEY", "")
+    RESEND_API_KEY: str = os.getenv("RESEND_API_KEY", "")
+
+    # One-time code (OTP) and brute-force protection
+    OTP_EXPIRE_MINUTES: int = 10
+    OTP_MAX_ATTEMPTS: int = 5
+    OTP_RESEND_COOLDOWN_SECONDS: int = 60
+    LOGIN_MAX_FAILED_ATTEMPTS: int = 5
+    LOGIN_LOCKOUT_MINUTES: int = 15
     
     # Automation & Multi-Agent Webhooks (e.g. n8n, Zapier)
     N8N_WEBHOOK_URL: str = os.getenv("N8N_WEBHOOK_URL", "")
@@ -41,9 +55,26 @@ class Settings(BaseSettings):
         "http://127.0.0.1:3000",
         "http://localhost:8000",
     ]
+    # Extra allowed origins, comma separated (your Vercel / custom domain)
+    EXTRA_CORS_ORIGINS: str = os.getenv("EXTRA_CORS_ORIGINS", "")
+
+    @property
+    def is_development(self) -> bool:
+        return self.APP_ENV.lower() in ("development", "dev", "local", "test")
+
+    @property
+    def email_provider(self) -> str:
+        if self.BREVO_API_KEY:
+            return "brevo"
+        if self.RESEND_API_KEY:
+            return "resend"
+        if self.SMTP_HOST and self.SMTP_USER and self.SMTP_PASSWORD:
+            return "smtp"
+        return "none"
 
     class Config:
         case_sensitive = True
         env_file = ".env"
+        extra = "ignore"
 
 settings = Settings()

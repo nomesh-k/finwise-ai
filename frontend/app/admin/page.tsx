@@ -95,7 +95,7 @@ export default function AdminOverviewPage() {
               <strong className="block text-sm font-semibold">Elevated Permissions Notice</strong>
               <p>
                 You are currently logged in as a standard user (<strong>{user?.email}</strong>). Administrative views require an admin role.
-                To test administrator access, sign in with the pre-seeded admin account: <code>admin@finwise.ai</code> / <code>Admin1234!</code>.
+                Ask the site owner for an administrator account.
               </p>
             </div>
           </div>

@@ -20,6 +20,10 @@ class User(Base):
     currency = Column(String(3), default="INR", nullable=False)
     role = Column(String(20), default="user", nullable=False)  # user, admin
     is_active = Column(Boolean, default=True, nullable=False)
+    # Security columns (added by app.core.migrate_security for existing databases)
+    email_verified = Column(Boolean, default=True, nullable=False)
+    failed_login_attempts = Column(Integer, default=0, nullable=False)
+    locked_until = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=utc_now, nullable=False)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
 
@@ -265,3 +269,21 @@ class AuditEvent(Base):
     created_at = Column(DateTime, default=utc_now, nullable=False)
 
     user = relationship("User", back_populates="audit_events")
+
+
+
+class EmailOTP(Base):
+    """Hashed one-time codes for email verification and password reset."""
+    __tablename__ = "email_otps"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    email = Column(String(254), index=True, nullable=False)
+    purpose = Column(String(20), nullable=False)  # signup, reset
+    code_hash = Column(String(64), nullable=False)
+    attempts = Column(Integer, default=0, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("email", "purpose", name="uq_otp_email_purpose"),
+    )

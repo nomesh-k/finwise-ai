@@ -14,7 +14,9 @@ logger = logging.getLogger("finwise-email")
 EMAIL_LOG_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "emails.log")
 
 def _record_email_locally(to_email: str, subject: str, body: str, meta: Optional[Dict[str, Any]] = None):
-    """Fallback audit log so no notification or reset token is ever lost."""
+    """Development-only audit log. Never used in production so codes are not written to disk."""
+    if not settings.is_development:
+        return
     entry = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "to": to_email,
@@ -47,46 +49,136 @@ async def trigger_n8n_agent_webhook(event_type: str, payload: Dict[str, Any]):
     except Exception as e:
         logger.warning(f"n8n webhook dispatch non-critical error: {e}")
 
+def _send_via_brevo(to_email: str, subject: str, html: str, text: str) -> bool:
+    sender = settings.SMTP_FROM_EMAIL or settings.SMTP_USER
+    r = httpx.post(
+        "https://api.brevo.com/v3/smtp/email",
+        headers={"api-key": settings.BREVO_API_KEY, "accept": "application/json"},
+        json={
+            "sender": {"name": settings.SMTP_FROM_NAME, "email": sender},
+            "to": [{"email": to_email}],
+            "subject": subject,
+            "htmlContent": html,
+            "textContent": text,
+        },
+        timeout=10.0,
+    )
+    if r.status_code >= 300:
+        logger.error("Brevo rejected email (%s): %s", r.status_code, r.text[:200])
+        return False
+    return True
+
+
+def _send_via_resend(to_email: str, subject: str, html: str, text: str) -> bool:
+    sender = settings.SMTP_FROM_EMAIL or settings.SMTP_USER
+    r = httpx.post(
+        "https://api.resend.com/emails",
+        headers={"Authorization": f"Bearer {settings.RESEND_API_KEY}"},
+        json={
+            "from": f"{settings.SMTP_FROM_NAME} <{sender}>",
+            "to": [to_email],
+            "subject": subject,
+            "html": html,
+            "text": text,
+        },
+        timeout=10.0,
+    )
+    if r.status_code >= 300:
+        logger.error("Resend rejected email (%s): %s", r.status_code, r.text[:200])
+        return False
+    return True
+
+
+def _send_via_smtp(to_email: str, subject: str, html: str, text: str) -> bool:
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = f"{settings.SMTP_FROM_NAME} <{settings.SMTP_FROM_EMAIL or settings.SMTP_USER}>"
+    msg["To"] = to_email
+    msg.attach(MIMEText(text, "plain"))
+    msg.attach(MIMEText(html, "html"))
+
+    if settings.SMTP_PORT == 465:
+        server = smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10)
+    else:
+        server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10)
+        if settings.SMTP_TLS:
+            server.starttls()
+    server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+    server.sendmail(settings.SMTP_FROM_EMAIL or settings.SMTP_USER, [to_email], msg.as_string())
+    server.quit()
+    return True
+
+
 def send_email(to_email: str, subject: str, html_content: str, text_content: Optional[str] = None) -> bool:
     """
-    Sends an email using configured SMTP provider (e.g. Gmail, SendGrid, Amazon SES, or custom).
-    Gracefully logs and dispatches even if live SMTP credentials are not yet populated.
+    Sends an email through the first configured provider: Brevo API, Resend API, then SMTP.
+    With no provider configured it only simulates delivery in development; in production
+    it returns False so callers can tell the user instead of silently dropping the message.
     """
     if not text_content:
         text_content = html_content.replace("<br/>", "\n").replace("</p>", "\n").replace("<p>", "")
 
     _record_email_locally(to_email, subject, text_content)
 
-    if not settings.SMTP_HOST or not settings.SMTP_USER or not settings.SMTP_PASSWORD:
-        logger.info(f"[EMAIL SIMULATION] To: {to_email} | Subject: {subject} | SMTP not configured, logged to emails.log")
-        return True
+    provider = settings.email_provider
+    if provider == "none":
+        if settings.is_development:
+            logger.warning("[EMAIL SIMULATION] To: %s | Subject: %s | No email provider configured.", to_email, subject)
+            return True
+        logger.error("No email provider configured (set BREVO_API_KEY, RESEND_API_KEY or SMTP_*). Email to %s not sent.", to_email)
+        return False
 
     try:
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = subject
-        msg["From"] = f"{settings.SMTP_FROM_NAME} <{settings.SMTP_FROM_EMAIL or settings.SMTP_USER}>"
-        msg["To"] = to_email
-
-        part1 = MIMEText(text_content, "plain")
-        part2 = MIMEText(html_content, "html")
-        msg.attach(part1)
-        msg.attach(part2)
-
-        if settings.SMTP_PORT == 465:
-            server = smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10)
-        else:
-            server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10)
-            if settings.SMTP_TLS:
-                server.starttls()
-
-        server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
-        server.sendmail(settings.SMTP_FROM_EMAIL or settings.SMTP_USER, [to_email], msg.as_string())
-        server.quit()
-        logger.info(f"Successfully sent live email to {to_email} with subject: {subject}")
-        return True
+        senders = {"brevo": _send_via_brevo, "resend": _send_via_resend, "smtp": _send_via_smtp}
+        ok = senders[provider](to_email, subject, html_content, text_content)
+        if ok:
+            logger.info("Sent email via %s to %s: %s", provider, to_email, subject)
+        return ok
     except Exception as e:
-        logger.error(f"Failed to send email via SMTP to {to_email}: {e}")
+        logger.error("Failed to send email via %s to %s: %s", provider, to_email, e)
         return False
+
+
+def send_otp_email(to_email: str, display_name: str, code: str, purpose: str) -> bool:
+    """Sends a 6-digit one-time code for email verification ('signup') or password reset ('reset')."""
+    from html import escape
+    minutes = settings.OTP_EXPIRE_MINUTES
+    if purpose == "reset":
+        subject = "Your FinWise AI password reset code"
+        heading = "Reset your password"
+        intro = "Use this one-time code to reset your FinWise AI password."
+    else:
+        subject = "Verify your email for FinWise AI"
+        heading = "Verify your email"
+        intro = "Welcome to FinWise AI! Use this one-time code to confirm your email address."
+    name = escape(display_name or "there")
+    # Spaced digits are easier to read; the plain-text part keeps it copy-friendly.
+    spaced = " ".join(code)
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; background-color: #F5F7F5; margin: 0; padding: 24px; color: #10251D;">
+      <div style="max-width: 480px; margin: 0 auto; background: #ffffff; border-radius: 16px; border: 1px solid #D9E2DC; padding: 32px;">
+        <div style="font-weight: 900; font-size: 20px; margin-bottom: 20px;">finwise<span style="color: #16A36A;">AI</span></div>
+        <h2 style="margin: 0 0 12px; font-size: 20px;">{heading}</h2>
+        <p style="margin: 0 0 16px;">Hello <strong>{name}</strong>,</p>
+        <p style="margin: 0 0 20px;">{intro}</p>
+        <div style="text-align: center; background: #F0FDF4; border: 1px solid #BBE7CF; border-radius: 12px; padding: 18px; font-size: 32px; font-weight: 800; letter-spacing: 6px; color: #10251D;">{spaced}</div>
+        <p style="font-size: 13px; color: #64748B; margin: 20px 0 0;">This code expires in <strong>{minutes} minutes</strong> and can only be used once.</p>
+        <p style="font-size: 13px; color: #B91C1C; margin: 12px 0 0;"><strong>Never share this code.</strong> FinWise AI staff will never ask for it. If you did not request it, you can safely ignore this email.</p>
+      </div>
+    </body>
+    </html>
+    """
+    text_content = (
+        f"FinWise AI: {heading}\n\nHello {display_name},\n\n{intro}\n\n"
+        f"Your code: {code}\n\nIt expires in {minutes} minutes and can be used once.\n"
+        "Never share this code. If you did not request it, ignore this email."
+    )
+    if settings.is_development and settings.email_provider == "none":
+        logger.warning("[DEV ONLY] %s code for %s: %s", purpose, to_email, code)
+    return send_email(to_email, subject, html_content, text_content)
+
 
 def send_password_reset_email(to_email: str, display_name: str, reset_url: str) -> bool:
     """Delivers a secure password recovery email with a one-time reset link."""

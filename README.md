@@ -6,7 +6,7 @@
 [![TypeScript](https://img.shields.io/badge/Language-TypeScript-3178C6.svg?style=flat&logo=typescript)](https://www.typescriptlang.org)
 [![Python 3.12+](https://img.shields.io/badge/Language-Python%203.12+-3776AB.svg?style=flat&logo=python)](https://www.python.org)
 [![MySQL 8](https://img.shields.io/badge/Database-MySQL%208%20%7C%20SQLite-4479A1.svg?style=flat&logo=mysql)](https://www.mysql.com)
-[![Tests](https://img.shields.io/badge/Tests-12%2F12%20Passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-41%2F41%20Passing-brightgreen.svg)]()
 
 FinWise AI is an intelligent financial planning platform built for individuals, students, young professionals, and households. It combines deterministic personal finance math, an interactive ledger dashboard, and an orchestrated multi-agent AI assistant to deliver transparent, actionable financial insights.
 
@@ -41,9 +41,10 @@ graph TD
 - `/` — Premium landing page highlighting features, architecture, and security disclosures.
 - `/features` — In-depth breakdown of the 6 core pillars.
 - `/security` — Honest privacy and security architecture breakdown.
-- `/login` — Secure authentication with one-click pre-filled demo account buttons.
-- `/register` — Account registration with input validation.
-- `/forgot-password` — Password recovery flow.
+- `/login` — Email and password sign-in with lockout protection and a demo account button.
+- `/register` — Account registration with a live password-strength checklist.
+- `/verify-email` — 6-digit email code that confirms a new account.
+- `/forgot-password` and `/reset-password` — Password recovery with a one-time code sent to the user's inbox.
 
 ### Authenticated Financial Suite
 - `/onboarding` — Multi-step wizard collecting initial baseline, income, needs/wants, and savings goals.
@@ -74,7 +75,7 @@ graph TD
 | **Frontend** | Next.js 14 (App Router), React 18, TypeScript, Tailwind CSS, Lucide Icons, Recharts, React Hook Form, Zod |
 | **Backend** | Python 3.12+, FastAPI, Pydantic v2, SQLAlchemy 2, Alembic, Uvicorn, Pytest, HTTPX |
 | **Database** | MySQL 8 (production) with automatic SQLite dual-mode (`sqlite:///./finwise.db`) for zero-dependency local dev |
-| **Security** | JWT (HS256), Bcrypt password hashing, Strict CORS, Audit Event Logging, Immutable action checks |
+| **Security** | JWT (HS256), Bcrypt password hashing, email-verified accounts, hashed single-use email codes (OTP), strong password policy, account lockout and rate limiting, strict CORS, security headers, Audit Event Logging |
 | **AI Multi-Agent**| Hybrid Multi-Agent Graph (Coordinator, Expense Analyst, Budget Planner, Savings Planner, Policy Validator) |
 
 ---
@@ -124,10 +125,14 @@ npm run dev
 ```
 Open your browser at `http://localhost:3000`.
 
-### Pre-Seeded Demo Credentials
-You can log in directly using the 1-click login buttons on `/login`:
-- **Standard User:** `demo@finwise.ai` / `Demo1234!`
-- **Administrator:** `admin@finwise.ai` / `Admin1234!`
+### Demo account
+Use the **Try the demo account** button on `/login` (`demo@finwise.ai`).
+There is no built-in admin password. To create an admin, set `DEFAULT_ADMIN_PASSWORD` in the backend environment.
+
+### Email codes (sign-up and password reset)
+Every account must confirm its email, and forgotten passwords are reset with a 6-digit code sent to the inbox.
+- **Local development:** set `APP_ENV=development` in `backend/.env`. Codes are printed in the backend console, no email provider needed.
+- **Production:** configure an email provider (`BREVO_API_KEY`, `RESEND_API_KEY`, or `SMTP_*`; see `backend/.env.example`). Without one, the API refuses to send codes instead of silently dropping them.
 
 ---
 

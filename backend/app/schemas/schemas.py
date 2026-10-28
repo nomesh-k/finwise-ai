@@ -1,30 +1,63 @@
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional, List, Dict, Any, Literal
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+from app.core.security import validate_password_strength
 
 # ----------------- AUTH SCHEMAS -----------------
 class UserRegister(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=8, max_length=128)
+    password: str = Field(min_length=1, max_length=72)
     display_name: str = Field(min_length=2, max_length=120)
     currency: str = Field(default="INR", max_length=3)
 
+    @field_validator("display_name")
+    @classmethod
+    def _clean_name(cls, v: str) -> str:
+        v = " ".join(v.split())
+        if len(v) < 2 or any(c in v for c in "<>"):
+            raise ValueError("Please enter a valid name.")
+        return v
+
+    @model_validator(mode="after")
+    def _check_password(self):
+        validate_password_strength(self.password, str(self.email))
+        return self
+
 class UserLogin(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Field(min_length=1, max_length=128)
 
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: "UserOut"
 
+class RegisterPending(BaseModel):
+    message: str
+    email: str
+    requires_verification: bool = True
+
+class EmailCodeVerify(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
+
+class ResendCode(BaseModel):
+    email: EmailStr
+    purpose: Literal["signup", "reset"] = "signup"
+
 class PasswordForgot(BaseModel):
     email: EmailStr
 
 class PasswordReset(BaseModel):
-    token: str
-    new_password: str = Field(min_length=8, max_length=128)
+    email: EmailStr
+    code: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
+    new_password: str = Field(min_length=1, max_length=72)
+
+    @model_validator(mode="after")
+    def _check_password(self):
+        validate_password_strength(self.new_password, str(self.email))
+        return self
 
 class UserOut(BaseModel):
     id: int

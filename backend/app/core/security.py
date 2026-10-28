@@ -55,3 +55,65 @@ def verify_password_reset_token(token: str) -> Optional[str]:
         return payload.get("sub")
     except jwt.PyJWTError:
         return None
+
+
+# ---------------------------------------------------------------------------
+# Password policy, one-time codes, and timing-safe helpers
+# ---------------------------------------------------------------------------
+import hashlib
+import hmac
+import re
+import secrets
+
+_COMMON_PASSWORDS = {
+    "password", "password1", "password123", "passw0rd", "12345678", "123456789",
+    "1234567890", "qwertyuiop", "qwerty123", "iloveyou", "admin1234", "welcome1",
+    "letmein123", "abc12345", "finwise123", "demo1234", "changeme",
+}
+
+# A real bcrypt hash used to burn the same CPU time when an email does not exist,
+# so attackers cannot tell registered emails apart by response time.
+_DUMMY_HASH = bcrypt.hashpw(b"not-a-real-password", bcrypt.gensalt()).decode("utf-8")
+
+
+def burn_password_check(plain_password: str) -> None:
+    verify_password(plain_password, _DUMMY_HASH)
+
+
+def validate_password_strength(password: str, email: Optional[str] = None) -> str:
+    """Raises ValueError with a user-readable message if the password is weak."""
+    if len(password) < 10:
+        raise ValueError("Password must be at least 10 characters long.")
+    if len(password.encode("utf-8")) > 72:
+        raise ValueError("Password must be at most 72 bytes long.")
+    if not re.search(r"[a-z]", password):
+        raise ValueError("Password must include a lowercase letter.")
+    if not re.search(r"[A-Z]", password):
+        raise ValueError("Password must include an uppercase letter.")
+    if not re.search(r"\d", password):
+        raise ValueError("Password must include a number.")
+    if not re.search(r"[^A-Za-z0-9]", password):
+        raise ValueError("Password must include a special character.")
+    lowered = password.lower()
+    if lowered in _COMMON_PASSWORDS:
+        raise ValueError("That password is too common. Please choose a different one.")
+    if email:
+        local = email.split("@")[0].lower()
+        if len(local) >= 4 and local in lowered:
+            raise ValueError("Password must not contain your email name.")
+    return password
+
+
+def generate_otp_code() -> str:
+    """Cryptographically secure 6-digit code."""
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def hash_otp(email: str, purpose: str, code: str) -> str:
+    """Keyed hash so a database leak does not reveal live codes."""
+    msg = f"{email.lower()}|{purpose}|{code}".encode("utf-8")
+    return hmac.new(settings.JWT_SECRET.encode("utf-8"), msg, hashlib.sha256).hexdigest()
+
+
+def otp_matches(stored_hash: str, email: str, purpose: str, code: str) -> bool:
+    return hmac.compare_digest(stored_hash, hash_otp(email, purpose, code))

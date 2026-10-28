@@ -21,6 +21,34 @@ export function setToken(token: string | null) {
   }
 }
 
+export class ApiError extends Error {
+  status: number;
+  code?: string;
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
+function describeError(errJson: any): { message: string; code?: string } {
+  const detail = errJson?.detail ?? errJson?.message;
+  if (typeof detail === "string") return { message: detail };
+  if (Array.isArray(detail)) {
+    // FastAPI validation errors: [{ msg: "Value error, Password must ..." }]
+    const msg = detail
+      .map((d: any) => String(d?.msg || "").replace(/^Value error,\s*/i, ""))
+      .filter(Boolean)
+      .join(" ");
+    return { message: msg || "Please check the details you entered." };
+  }
+  if (detail && typeof detail === "object") {
+    return { message: detail.message || "An unexpected error occurred.", code: detail.code };
+  }
+  return { message: "An unexpected error occurred." };
+}
+
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
   const headers = new Headers(options.headers || {});
@@ -43,19 +71,20 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   }
 
   if (!res.ok) {
-    let errorDetail = "An unexpected error occurred.";
+    let message = `HTTP error ${res.status}`;
+    let code: string | undefined;
     try {
       const text = await res.text();
       try {
-        const errJson = JSON.parse(text);
-        errorDetail = errJson.detail || errJson.message || JSON.stringify(errJson);
+        ({ message, code } = describeError(JSON.parse(text)));
       } catch {
-        errorDetail = text || `HTTP error ${res.status}`;
+        message = text || message;
       }
     } catch {
-      errorDetail = `HTTP error ${res.status}`;
+      // keep default message
     }
-    throw new Error(errorDetail || `HTTP error ${res.status}`);
+    if (res.status === 429) message = message || "Too many attempts. Please wait a moment.";
+    throw new ApiError(message, res.status, code);
   }
 
   return res.json();
@@ -69,7 +98,17 @@ export const api = {
         body: JSON.stringify(credentials),
       }),
     register: (data: { email: string; password: string; display_name: string; currency?: string }) =>
-      request<{ access_token: string; token_type: string; user: any }>("/auth/register", {
+      request<{ message: string; email: string; requires_verification: boolean }>("/auth/register", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    verifyEmail: (data: { email: string; code: string }) =>
+      request<{ access_token: string; token_type: string; user: any }>("/auth/verify-email", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    resendCode: (data: { email: string; purpose: "signup" | "reset" }) =>
+      request<{ message: string }>("/auth/resend-code", {
         method: "POST",
         body: JSON.stringify(data),
       }),
@@ -79,13 +118,11 @@ export const api = {
         method: "POST",
       }),
     forgotPassword: (data: { email: string }) =>
-      request<{ message: string; debug_token?: string }>("/auth/forgot-password", {
+      request<{ message: string }>("/auth/forgot-password", {
         method: "POST",
         body: JSON.stringify(data),
       }),
-    verifyResetToken: (token: string) =>
-      request<{ valid: boolean; email: string }>(`/auth/verify-reset-token?token=${encodeURIComponent(token)}`),
-    resetPassword: (data: { token: string; new_password: string }) =>
+    resetPassword: (data: { email: string; code: string; new_password: string }) =>
       request<{ message: string }>("/auth/reset-password", {
         method: "POST",
         body: JSON.stringify(data),

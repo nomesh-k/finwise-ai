@@ -22,7 +22,7 @@ def test_auth_login_demo_user():
     assert "access_token" in data
     assert data["user"]["email"] == "demo@finwise.ai"
 
-def test_auth_registration_and_isolation():
+def test_auth_registration_and_isolation(sent_codes):
     test_email = f"user_{uuid.uuid4().hex[:8]}@example.com"
     res = client.post("/api/v1/auth/register", json={
         "email": test_email,
@@ -31,7 +31,12 @@ def test_auth_registration_and_isolation():
         "currency": "INR"
     })
     assert res.status_code == 200
-    token = res.json()["access_token"]
+    assert "access_token" not in res.json()  # no session until the email is verified
+    verify = client.post("/api/v1/auth/verify-email", json={
+        "email": test_email, "code": sent_codes[(test_email, "signup")]
+    })
+    assert verify.status_code == 200
+    token = verify.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
     # Verify user can access /auth/me

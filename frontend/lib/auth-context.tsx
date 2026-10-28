@@ -22,6 +22,7 @@ interface AuthContextType {
   login: (email: string, pass: string) => Promise<void>;
   loginAsDemo: () => Promise<void>;
   register: (email: string, pass: string, name: string, currency?: string) => Promise<void>;
+  verifyEmail: (email: string, code: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -69,13 +70,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await login('demo@finwise.ai', 'Demo1234!');
   }
 
+  // Signup no longer logs the user in: a 6-digit code is emailed first.
   async function register(email: string, pass: string, name: string, currency?: string) {
-    const res = await api.auth.register({
+    await api.auth.register({
       email,
       password: pass,
       display_name: name,
       currency: currency || 'INR',
     });
+  }
+
+  async function verifyEmail(email: string, code: string) {
+    const res = await api.auth.verifyEmail({ email, code });
     setToken(res.access_token);
     setTokenState(res.access_token);
     setUser(res.user);
@@ -103,6 +109,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         login,
         loginAsDemo,
         register,
+        verifyEmail,
         logout,
         refreshUser,
       }}
